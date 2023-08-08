@@ -110,3 +110,71 @@ Check 'false' failed at src/bindings/python/src/pyopenvino/core/async_infer_queu
 ScatterElementsUpdate node with name '/Prediction/ScatterElements_25' have indices value that points to non-existing output tensor element
 
 ```
+
+## Try with OpenVINO api's to test the model.
+
+```
+python demo_ov.py --batch_size 1 --image_folder demo_image
+```
+
+Output observed, but accuracy is bad.
+
+```
+$ python demo_ov.py --batch_size 1 --image_folder demo_image
+Device: cpu
+model input parameters 32 100 20 1 512 256 38 25 TPS ResNet BiLSTM Attn
+loading pretrained model from models-exported/TPS-ResNet-BiLSTM-Attn_fp32.xml
+Inference Precision: <Type: 'float32'>
+Input Layer: <ConstOutput: names[input.1] shape[1,1,32,100] type: f32>
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_1.png         avaiilable                      0.4550
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_2.jpg         shaaasshacc                     0.1499
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_3.png         london                          0.8993
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_4.png         greensttaad                     0.3400
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_5.png         toas                            0.9938
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_6.png         meeerry                         0.2124
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_7.png         undergroundd                    0.3090
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_8.jpg         rroaaldd                        0.1309
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_9.jpg         bally                           0.1565
+preds shape: (1, 26, 38)
+--------------------------------------------------------------------------------
+image_path                      predicted_labels                confidence score
+--------------------------------------------------------------------------------
+demo_image_1/demo_10.jpg        univversity                     0.7729
+```
+
