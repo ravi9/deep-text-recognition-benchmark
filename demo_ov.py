@@ -37,13 +37,13 @@ def demo(opt):
     core = Core()
     core.set_property("CPU", {"INFERENCE_PRECISION_HINT": "f32"})
     model = core.read_model(model=model_xml)
-    # model.reshape({"input.1":[opt.batch_size,1,32,100]})
-    model.reshape({"input.1":[opt.batch_size,1,32,100],"onnx::Gather_1":[opt.batch_size,26]})
+    model.reshape({"input.1":[opt.batch_size,1,32,100]})
+    # model.reshape({"input.1":[opt.batch_size,1,32,100],"onnx::Gather_1":[opt.batch_size,26]})
     # model.reshape({"1":[opt.batch_size,1,32,100],"2":[opt.batch_size,26]})
 
     ppp = PrePostProcessor(model)
     ppp.input(0).tensor().set_element_type(Type.f32).set_layout(Layout('NCHW'))
-    ppp.input(1).tensor().set_element_type(Type.i64)
+    # ppp.input(1).tensor().set_element_type(Type.i64)
 
     #print(f'Dump preprocessor: {ppp}')
     model = ppp.build()
@@ -88,9 +88,8 @@ def demo(opt):
 
         else:
 
-            preds = compiled_model((image, text_for_pred))[output_layer]
-            # preds = compiled_model(image)[output_layer]
-            # print(f"{preds[:,:,0:2]}")#[output_layer]
+            # preds = compiled_model((image, text_for_pred))[output_layer]
+            preds = compiled_model(image)[output_layer]
             # print(f"preds shape: {preds.shape}")
             preds = torch.from_numpy(preds)
             # select max probabilty (greedy decoding) then decode index to character
