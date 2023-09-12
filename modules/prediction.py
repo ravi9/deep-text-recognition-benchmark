@@ -27,7 +27,8 @@ class Attention(nn.Module):
             text : the text-index of each image. [batch_size x (max_length+1)]. +1 for [GO] token. text[:, 0] = [GO].
         output: probability distribution at each step [batch_size x num_steps x num_classes]
         """
-        batch_size = batch_H.size(0)
+        # batch_size = batch_H.size(0)
+        batch_size = int(batch_H.size(0))
         num_steps = batch_max_length + 1  # +1 for [s] at end of sentence.
 
         output_hiddens = torch.FloatTensor(batch_size, num_steps, self.hidden_size).fill_(0).to(device)
