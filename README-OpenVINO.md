@@ -19,6 +19,10 @@ pip install lmdb pillow torchvision nltk natsort
 
 ## Export to ONNX and then to OV IR
 ```bash
+# To export models for OVMS:
+python export_to_ov_ir.py --output_dir models-exported-ovms --ovms
+
+# To export models to use with demo_ov.py
 python export_to_ov_ir.py
 ```
 
