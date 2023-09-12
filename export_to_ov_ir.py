@@ -1,3 +1,12 @@
+"""
+Usage: 
+To export models for OVMS:
+python export_to_ov_ir.py --output_dir models-exported-ovms --ovms
+
+To export models to use with demo_ov.py
+python export_to_ov_ir.py
+"""
+
 import string
 import argparse
 from pathlib import Path
@@ -7,6 +16,15 @@ from model import Model
 import torch
 from openvino.runtime import serialize
 from openvino.tools import mo
+
+# Wrapper for Model to include input normalization
+class EncDecWrapper(Model):
+    def __init__(self, opt):
+        super(EncDecWrapper, self).__init__(opt)
+
+    def forward(self, input, text,is_train=False):
+        input.sub_(127.5).div_(127.5)  # Normalize input image.
+        return super().forward(input, text, is_train)
 
 def export_to_ov_ir(opt):
     """ model configuration """
@@ -19,7 +37,10 @@ def export_to_ov_ir(opt):
     if opt.rgb:
         opt.input_channel = 3
 
-    model = Model(opt)
+    if  opt.ovms:
+        model = EncDecWrapper(opt)
+    else:
+        model = Model(opt)
 
     print('Model input parameters', opt.imgH, opt.imgW, opt.num_fiducial, opt.input_channel, opt.output_channel,
           opt.hidden_size, opt.num_class, opt.batch_max_length, opt.Transformation, opt.FeatureExtraction,
@@ -27,12 +48,13 @@ def export_to_ov_ir(opt):
 
     model = torch.nn.DataParallel(model).to(opt.device)
 
-    # load model
-    print('loading pretrained model from %s' % opt.saved_model)
+   # load model
+    print(f"Loading pretrained model from {opt.saved_model}")
+
     model.load_state_dict(torch.load(opt.saved_model, map_location=opt.device))
     model = model.module # Unwrap the model from DataParallel using the .module attribute
 
-    # predict
+    # Set model to Eval
     model.eval()
 
     # Create dummy inputs
@@ -42,15 +64,23 @@ def export_to_ov_ir(opt):
 
     # Save FP32 ONNX and IR model
     torch.onnx.export(model, (dummy_input, dummy_input_txt), opt.fp32_onnx_path, opset_version=16)
+    # Export to IR
     model_ir = mo.convert_model(input_model=opt.fp32_onnx_path)
     serialize(model_ir, str(opt.fp32_ir_path))
 
-    # from openvino.tools.mo import convert_model
-    # ov_model = convert_model(model, example_input=(dummy_input, dummy_input_txt) )
-    # serialize(ov_model, str(opt.fp32_ir_path))
+    # Export with Dynamic Batch size.
+    # torch.onnx.export(model,
+    #               (dummy_input, dummy_input_txt),
+    #               opt.fp32_onnx_path,
+    #               dynamic_axes={"input.1": {0: "-1", 1:"1", 2:"32", 3:"100"}, "onnx::Gather_1": {0: "-1", 1:"26"}},
+    #               input_names=["input.1","onnx::Gather_1"],
+    #               opset_version=16)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--ovms', action='store_true', default=False, help='Export for OVMS. Set False to use with demo_ov.py')
+    parser.add_argument('--output_dir', default="models-exported", required=False, help='Output Dir for exported models.')
     parser.add_argument('--saved_model', default='models/TPS-ResNet-BiLSTM-Attn.pth', required=False, help="path to saved_model")
     """ Data processing """
     parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
@@ -77,10 +107,10 @@ if __name__ == '__main__':
     if opt.sensitive:
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
 
-    opt.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    opt.device = 'cpu'
     print(f"Device: {opt.device}")
 
-    output_dir = Path("models-exported")  # Update OUTPUT_DIR to opt.output_dir
+    output_dir = Path(opt.output_dir)  # Update OUTPUT_DIR to opt.output_dir
     base_model_name = opt.saved_model.split('/')[-1].split('.')[0] # Get the filename only, ex: TPS-ResNet-BiLSTM-Attn
     output_dir.mkdir(exist_ok=True)
 
@@ -91,5 +121,10 @@ if __name__ == '__main__':
     export_to_ov_ir(opt)
 
     print()
-    print(f"ONNX model saved at: {opt.fp32_onnx_path}")
-    print(f"OpenVINO IR model saved at: {opt.fp32_ir_path}")
+    if  opt.ovms:
+        print(f"ovms flag is set to True. So, the model is exported for OVMS usage. Model includes image normalization")
+    else:
+        print(f"ovms flag is set to False. So, the model is exported for API usage (demo_ov.py). Input image is normalized via AlignCollate function.")
+
+    print(f"Use in OVMS: {opt.ovms}. ONNX model saved at: {opt.fp32_onnx_path}")
+    print(f"Use in OVMS: {opt.ovms}. OpenVINO IR model saved at: {opt.fp32_ir_path}")

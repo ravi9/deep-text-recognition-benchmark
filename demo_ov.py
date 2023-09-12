@@ -2,17 +2,13 @@ import string
 import argparse
 
 import torch
-import torch.backends.cudnn as cudnn
 import torch.utils.data
 import torch.nn.functional as F
 
 from utils import CTCLabelConverter, AttnLabelConverter
 from dataset import RawDataset, AlignCollate
-from model import Model
 
-from openvino.runtime import Core
-from openvino.preprocess import PrePostProcessor
-from openvino.runtime import Layout, Type
+from openvino.runtime import Core, get_version
 
 def demo(opt):
     """ model configuration """
@@ -25,37 +21,27 @@ def demo(opt):
     if opt.rgb:
         opt.input_channel = 3
 
-    print('model input parameters', opt.imgH, opt.imgW, opt.num_fiducial, opt.input_channel, opt.output_channel,
-          opt.hidden_size, opt.num_class, opt.batch_max_length, opt.Transformation, opt.FeatureExtraction,
-          opt.SequenceModeling, opt.Prediction)
+    print('Model input parameters:')
+    opt_dict = vars(opt)
+    for key, value in opt_dict.items():
+        print(f"{key}: {value}")
 
+    print(f"\nOpenVINO Version: {get_version()}")
 
     # load model
-    print('loading pretrained model from %s' % opt.saved_model)
-    model_xml = "models-exported/TPS-ResNet-BiLSTM-Attn_fp32.xml"
+    print(f"Loading pretrained model from {opt.saved_model}")
+    model_xml = opt.saved_model
 
     core = Core()
-    core.set_property("CPU", {"INFERENCE_PRECISION_HINT": "f32"})
     model = core.read_model(model=model_xml)
-    model.reshape({"input.1":[opt.batch_size,1,32,100]})
-    # model.reshape({"input.1":[opt.batch_size,1,32,100],"onnx::Gather_1":[opt.batch_size,26]})
-    # model.reshape({"1":[opt.batch_size,1,32,100],"2":[opt.batch_size,26]})
+    input_layer = model.input(0)
+    model.reshape({input_layer:[opt.batch_size,opt.input_channel,opt.imgH,opt.imgW]}) #{"onnx::Sub_0":[1,1,32,100]}
 
-    ppp = PrePostProcessor(model)
-    ppp.input(0).tensor().set_element_type(Type.f32).set_layout(Layout('NCHW'))
-    # ppp.input(1).tensor().set_element_type(Type.i64)
+    compiled_model = core.compile_model(model=model, device_name=opt.device.upper())
 
-    #print(f'Dump preprocessor: {ppp}')
-    model = ppp.build()
-
-    inference_precision = core.get_property("CPU", "INFERENCE_PRECISION_HINT")
-    print(f"Inference Precision: {inference_precision}")
-
-    compiled_model = core.compile_model(model=model, device_name="CPU")
-
-    input_layer = compiled_model.input(0)
-    print(f"Input Layer: {input_layer}")
     output_layer = compiled_model.output(0)
+    print(f"Input Layer: {input_layer}")
+    print(f"Output Layer: {output_layer}")
 
     # prepare data. two demo images from https://github.com/bgshih/crnn#run-demo
     AlignCollate_demo = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD)
@@ -74,20 +60,14 @@ def demo(opt):
         length_for_pred = torch.IntTensor([opt.batch_max_length] * batch_size).to(opt.device)
         text_for_pred = torch.LongTensor(batch_size, opt.batch_max_length + 1).fill_(0).to(opt.device)
 
-        # print(f"length_for_pred shape: {length_for_pred.shape}")
-        # print(f"text_for_pred shape: {length_for_pred.shape}")
-
         if 'CTC' in opt.Prediction:
             preds = compiled_model(image, text_for_pred)[output_layer]
-
             # Select max probabilty (greedy decoding) then decode index to character
             preds_size = torch.IntTensor([preds.size(1)] * batch_size)
             _, preds_index = preds.max(2)
             # preds_index = preds_index.view(-1)
             preds_str = converter.decode(preds_index, preds_size)
-
         else:
-
             # preds = compiled_model((image, text_for_pred))[output_layer]
             preds = compiled_model(image)[output_layer]
             # print(f"preds shape: {preds.shape}")
@@ -122,12 +102,13 @@ def demo(opt):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--eval_data', default='evaluation/', required=False, help='path to evaluation dataset')
-    parser.add_argument('--data_filtering_off', action='store_true', help='for data_filtering_off mode')
-    parser.add_argument('--image_folder', default='demo_image/', required=False, help='path to image_folder which contains text images')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
-    parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--saved_model', default='models-exported/TPS-ResNet-BiLSTM-Attn_fp32.xml', required=False, help="path to OV XML to evaluation")
+    parser.add_argument('--image_folder', default='demo_image/', required=False, help='path to image_folder which contains text images')
+    parser.add_argument('--eval_data', default='evaluation/', required=False, help='path to evaluation dataset')
+    parser.add_argument('--device', default='cpu', required=False, help='Target device to run on')
+    parser.add_argument('--data_filtering_off', action='store_true', help='for data_filtering_off mode')
+    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
+    parser.add_argument('--batch_size', type=int, default=1, help='input batch size')
     """ Data processing """
     parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
     parser.add_argument('--imgH', type=int, default=32, help='the height of the input image')
@@ -152,12 +133,5 @@ if __name__ == '__main__':
     """ vocab / character number configuration """
     if opt.sensitive:
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
-
-    opt.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {opt.device}")
-
-    cudnn.benchmark = True
-    cudnn.deterministic = True
-    opt.num_gpu = torch.cuda.device_count()
 
     demo(opt)
